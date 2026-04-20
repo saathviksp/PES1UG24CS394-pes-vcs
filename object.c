@@ -212,7 +212,82 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
-    // TODO: Implement
-    (void)id; (void)type_out; (void)data_out; (void)len_out;
-    return -1;
+    char path[512];
+    long file_size;
+    FILE *f;
+    uint8_t *full_object;
+    uint8_t *nul;
+    size_t header_len;
+    char header[64];
+    char type_name[16];
+    size_t payload_len;
+    ObjectID actual_id;
+
+    if (!id || !type_out || !data_out || !len_out) return -1;
+
+    object_path(id, path, sizeof(path));
+    f = fopen(path, "rb");
+    if (!f) return -1;
+
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return -1;
+    }
+
+    file_size = ftell(f);
+    if (file_size < 0) {
+        fclose(f);
+        return -1;
+    }
+    rewind(f);
+
+    full_object = malloc((size_t)file_size ? (size_t)file_size : 1);
+    if (!full_object) {
+        fclose(f);
+        return -1;
+    }
+
+    if (file_size > 0 && fread(full_object, 1, (size_t)file_size, f) != (size_t)file_size) {
+        free(full_object);
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+
+    compute_hash(full_object, (size_t)file_size, &actual_id);
+    if (memcmp(actual_id.hash, id->hash, HASH_SIZE) != 0) {
+        free(full_object);
+        return -1;
+    }
+
+    nul = memchr(full_object, '\0', (size_t)file_size);
+    if (!nul) {
+        free(full_object);
+        return -1;
+    }
+
+    header_len = (size_t)(nul - full_object);
+    if (header_len >= sizeof(header)) {
+        free(full_object);
+        return -1;
+    }
+
+    memcpy(header, full_object, header_len);
+    header[header_len] = '\0';
+    if (sscanf(header, "%15s %zu", type_name, &payload_len) != 2) {
+        free(full_object);
+        return -1;
+    }
+
+    if (strcmp(type_name, "blob") == 0) *type_out = OBJ_BLOB;
+    else if (strcmp(type_name, "tree") == 0) *type_out = OBJ_TREE;
+    else if (strcmp(type_name, "commit") == 0) *type_out = OBJ_COMMIT;
+    else {
+        free(full_object);
+        return -1;
+    }
+
+    *len_out = payload_len;
+    *data_out = full_object;
+    return 0;
 }
