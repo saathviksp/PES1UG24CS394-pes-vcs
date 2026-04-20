@@ -181,3 +181,40 @@ static int load_index_for_tree(Index *index) {
     fclose(f);
     return 0;
 }
+
+static int tree_has_entry(const Tree *tree, const char *name) {
+    for (int i = 0; i < tree->count; i++) {
+        if (strcmp(tree->entries[i].name, name) == 0) return 1;
+    }
+    return 0;
+}
+
+static int build_tree_level(const Index *index, const char *prefix, ObjectID *id_out) {
+    Tree tree;
+    size_t prefix_len = strlen(prefix);
+
+    tree.count = 0;
+
+    for (int i = 0; i < index->count; i++) {
+        const IndexEntry *entry = &index->entries[i];
+        const char *suffix;
+        const char *slash;
+
+        if (strncmp(entry->path, prefix, prefix_len) != 0) continue;
+
+        suffix = entry->path + prefix_len;
+        if (*suffix == '\0') continue;
+
+        slash = strchr(suffix, '/');
+        if (slash) continue;
+
+        if (tree.count >= MAX_TREE_ENTRIES) return -1;
+        tree.entries[tree.count].mode = entry->mode;
+        tree.entries[tree.count].hash = entry->hash;
+        snprintf(tree.entries[tree.count].name, sizeof(tree.entries[tree.count].name), "%s", suffix);
+        tree.count++;
+    }
+
+    (void)id_out;
+    return tree.count;
+}
