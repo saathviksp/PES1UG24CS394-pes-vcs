@@ -19,10 +19,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+
+static int compare_index_entries(const void *a, const void *b) {
+    const IndexEntry *ea = (const IndexEntry *)a;
+    const IndexEntry *eb = (const IndexEntry *)b;
+    return strcmp(ea->path, eb->path);
+}
 
 // ─── PROVIDED ────────────────────────────────────────────────────────────────
 
@@ -135,10 +144,46 @@ int index_status(const Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_load(Index *index) {
-    // TODO: Implement index loading
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    FILE *f;
+    char line[2048];
+
+    if (!index) return -1;
+    index->count = 0;
+
+    f = fopen(INDEX_FILE, "r");
+    if (!f) {
+        if (access(INDEX_FILE, F_OK) != 0) return 0;
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), f)) {
+        IndexEntry *entry;
+        unsigned int mode = 0;
+        char hex[HASH_HEX_SIZE + 1];
+
+        if (index->count >= MAX_INDEX_ENTRIES) {
+            fclose(f);
+            return -1;
+        }
+
+        entry = &index->entries[index->count];
+        if (sscanf(line, "%o %64s %" SCNu64 " %u %511[^\n]",
+                   &mode, hex, &entry->mtime_sec, &entry->size, entry->path) != 5) {
+            fclose(f);
+            return -1;
+        }
+
+        entry->mode = mode;
+        if (hex_to_hash(hex, &entry->hash) != 0) {
+            fclose(f);
+            return -1;
+        }
+
+        index->count++;
+    }
+
+    fclose(f);
+    return 0;
 }
 
 // Save the index to .pes/index atomically.
