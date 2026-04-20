@@ -197,29 +197,37 @@ int index_load(Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_save(const Index *index) {
-    Index sorted;
+    Index *sorted;
+    int dir_fd;
     FILE *f;
     char tmp_path[512];
 
     if (!index) return -1;
 
-    sorted = *index;
-    qsort(sorted.entries, sorted.count, sizeof(IndexEntry), compare_index_entries);
+    sorted = malloc(sizeof(Index));
+    if (!sorted) return -1;
+    *sorted = *index;
+    qsort(sorted->entries, sorted->count, sizeof(IndexEntry), compare_index_entries);
 
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", INDEX_FILE);
     f = fopen(tmp_path, "w");
-    if (!f) return -1;
-
-    for (int i = 0; i < sorted.count; i++) {
-        char hex[HASH_HEX_SIZE + 1];
-        hash_to_hex(&sorted.entries[i].hash, hex);
-        fprintf(f, "%o %s %" PRIu64 " %u %s\n",
-                sorted.entries[i].mode,
-                hex,
-                sorted.entries[i].mtime_sec,
-                sorted.entries[i].size,
-                sorted.entries[i].path);
+    if (!f) {
+        free(sorted);
+        return -1;
     }
+
+    for (int i = 0; i < sorted->count; i++) {
+        char hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&sorted->entries[i].hash, hex);
+        fprintf(f, "%o %s %" PRIu64 " %u %s\n",
+                sorted->entries[i].mode,
+                hex,
+                sorted->entries[i].mtime_sec,
+                sorted->entries[i].size,
+                sorted->entries[i].path);
+    }
+
+    free(sorted);
 
     fflush(f);
     if (fsync(fileno(f)) != 0 || fclose(f) != 0) {
@@ -230,6 +238,12 @@ int index_save(const Index *index) {
     if (rename(tmp_path, INDEX_FILE) != 0) {
         unlink(tmp_path);
         return -1;
+    }
+
+    dir_fd = open(PES_DIR, O_RDONLY | O_DIRECTORY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
     }
 
     return 0;
