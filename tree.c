@@ -26,6 +26,9 @@
 #define MODE_DIR       0040000
 
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+static int load_index_for_tree(Index *index);
+static int tree_has_entry(const Tree *tree, const char *name);
+static int build_tree_level(const Index *index, const char *prefix, ObjectID *id_out);
 
 // ─── PROVIDED ───────────────────────────────────────────────────────────────
 
@@ -94,7 +97,7 @@ static int compare_tree_entries(const void *a, const void *b) {
 int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
     // Estimate max size: (6 bytes mode + 1 byte space + 256 bytes name + 1 byte null + 32 bytes hash) per entry
     size_t max_size = tree->count * 296; 
-    uint8_t *buffer = malloc(max_size);
+    uint8_t *buffer = malloc(max_size ? max_size : 1);
     if (!buffer) return -1;
 
     // Create a mutable copy to sort entries (Git requirement)
