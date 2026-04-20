@@ -120,8 +120,32 @@ static int write_full(int fd, const void *data, size_t len) {
 //
 // Returns 0 on success, -1 on error.
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
-    // TODO: Implement
-    (void)type; (void)data; (void)len; (void)id_out;
+    const char *type_name = object_type_name(type);
+    char header[64];
+    int header_len;
+    size_t full_len;
+    uint8_t *full_object;
+
+    if (!type_name || !data || !id_out) return -1;
+
+    header_len = snprintf(header, sizeof(header), "%s %zu", type_name, len);
+    if (header_len < 0 || (size_t)header_len >= sizeof(header)) return -1;
+
+    full_len = (size_t)header_len + 1 + len;
+    full_object = malloc(full_len ? full_len : 1);
+    if (!full_object) return -1;
+
+    memcpy(full_object, header, (size_t)header_len);
+    full_object[header_len] = '\0';
+    memcpy(full_object + header_len + 1, data, len);
+
+    compute_hash(full_object, full_len, id_out);
+    if (object_exists(id_out)) {
+        free(full_object);
+        return 0;
+    }
+
+    free(full_object);
     return -1;
 }
 
