@@ -246,6 +246,7 @@ int index_save(const Index *index) {
 // Returns 0 on success, -1 on error.
 int index_add(Index *index, const char *path) {
     struct stat st;
+    IndexEntry *entry;
     FILE *f;
     long size;
     void *data;
@@ -288,5 +289,18 @@ int index_add(Index *index, const char *path) {
     }
 
     free(data);
-    return 0;
+
+    entry = index_find(index, path);
+    if (!entry) {
+        if (index->count >= MAX_INDEX_ENTRIES) return -1;
+        entry = &index->entries[index->count++];
+    }
+
+    entry->mode = (st.st_mode & S_IXUSR) ? 0100755 : 0100644;
+    entry->hash = blob_id;
+    entry->mtime_sec = (uint64_t)st.st_mtime;
+    entry->size = (uint32_t)st.st_size;
+    snprintf(entry->path, sizeof(entry->path), "%s", path);
+
+    return index_save(index);
 }
