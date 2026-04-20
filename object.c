@@ -221,7 +221,9 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     char header[64];
     char type_name[16];
     size_t payload_len;
+    size_t actual_payload_len;
     ObjectID actual_id;
+    uint8_t *payload;
 
     if (!id || !type_out || !data_out || !len_out) return -1;
 
@@ -287,7 +289,23 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
         return -1;
     }
 
+    actual_payload_len = (size_t)file_size - header_len - 1;
+    if (payload_len != actual_payload_len) {
+        free(full_object);
+        return -1;
+    }
+
+    payload = malloc(payload_len + 1);
+    if (!payload) {
+        free(full_object);
+        return -1;
+    }
+
+    memcpy(payload, nul + 1, payload_len);
+    payload[payload_len] = '\0';
+
     *len_out = payload_len;
-    *data_out = full_object;
+    *data_out = payload;
+    free(full_object);
     return 0;
 }
