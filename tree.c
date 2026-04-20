@@ -191,6 +191,8 @@ static int tree_has_entry(const Tree *tree, const char *name) {
 
 static int build_tree_level(const Index *index, const char *prefix, ObjectID *id_out) {
     Tree tree;
+    void *data = NULL;
+    size_t len = 0;
     size_t prefix_len = strlen(prefix);
 
     tree.count = 0;
@@ -234,6 +236,12 @@ static int build_tree_level(const Index *index, const char *prefix, ObjectID *id
         tree.count++;
     }
 
-    (void)id_out;
+    if (tree_serialize(&tree, &data, &len) != 0) return -1;
+    if (object_write(OBJ_TREE, data, len, id_out) != 0) {
+        free(data);
+        return -1;
+    }
+
+    free(data);
     return 0;
 }
