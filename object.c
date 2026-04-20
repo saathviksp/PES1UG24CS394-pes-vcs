@@ -122,9 +122,14 @@ static int write_full(int fd, const void *data, size_t len) {
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
     const char *type_name = object_type_name(type);
     char header[64];
+    char hex[HASH_HEX_SIZE + 1];
+    char shard_dir[512];
+    char final_path[512];
+    char tmp_path[1024];
     int header_len;
     size_t full_len;
     uint8_t *full_object;
+    int fd;
 
     if (!type_name || !data || !id_out) return -1;
 
@@ -145,8 +150,43 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         return 0;
     }
 
-    free(full_object);
-    return -1;
+    hash_to_hex(id_out, hex);
+    snprintf(shard_dir, sizeof(shard_dir), "%s/%.2s", OBJECTS_DIR, hex);
+    if (mkdir(shard_dir, 0755) != 0 && errno != EEXIST) {
+        free(full_object);
+        return -1;
+    }
+
+    object_path(id_out, final_path, sizeof(final_path));
+    if (snprintf(tmp_path, sizeof(tmp_path), "%s/.tmp-%ld", shard_dir, (long)getpid()) >= (int)sizeof(tmp_path)) {
+        free(full_object);
+        return -1;
+    }
+
+    fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) {
+        free(full_object);
+        return -1;
+    }
+
+    if (write_full(fd, full_object, full_len) != 0 || fsync(fd) != 0 || close(fd) != 0) {
+        unlink(tmp_path);
+        free(full_object);
+        return -1;
+    }
+
+    if (rename(tmp_path, final_path) != 0) {
+        unlink(tmp_path);
+        return -1;
+    }
+
+    fd = open(shard_dir, O_RDONLY | O_DIRECTORY);
+    if (fd >= 0) {
+        fsync(fd);
+        close(fd);
+    }
+
+    return 0;
 }
 
 // Read an object from the store.
